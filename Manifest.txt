@@ -1,0 +1,11 @@
+.autotest
+History.txt
+Manifest.txt
+README.txt
+Rakefile
+lib/minitest/bench/bacon.rb
+lib/minitest/bench/cucumber.rb
+lib/minitest/bench/minitest.rb
+lib/minitest/bench/rspec.rb
+lib/minitest/bench/shoulda.rb
+lib/minitest/bench/testunit.rb
