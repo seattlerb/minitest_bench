@@ -202,11 +202,11 @@ def run_test t
         when "testunit1" then
           "ruby"
         when "rspec" then
-          "tmp/isolate/ruby-1.8/bin/spec"
+          "spec"
         when "bacon" then
-          "tmp/isolate/ruby-1.8/bin/bacon"
+          "bacon"
         when "cucumber" then
-          "tmp/isolate/ruby-1.8/bin/cucumber --no-color -f progress --require test/cucumber.rb"
+          "cucumber --no-color -f progress --require test/cucumber.rb"
         else
           raise "unknown framework: #{framework.inspect}"
         end
