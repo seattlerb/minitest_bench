@@ -20,6 +20,7 @@ Hoe.spec 'minitest_bench' do
   self.version = "1.0.0"
   self.rubyforge_name = 'seattlerb'
 
+  extra_deps << ["ZenTest",   "> 0"]
   extra_deps << ["minitest",  "> 0"]
   extra_deps << ["rspec",     "> 0"]
   extra_deps << ["test-unit", "> 0"]
@@ -39,9 +40,33 @@ def test_file path
   task :bench    => out
 end
 
-$units      = [10, 100, 1_000, 10_000]
+$units      = [1, 10, 100, 1_000, 10_000]
 $types      = %w(positive negative)
 $frameworks = []
+
+task :startup => :generate do
+  times = {}
+  n = 100
+
+  Dir["test/*positive_1.*"].each do |path|
+    framework, type, size = test_type path
+    $stderr.puts framework
+    t0 = Time.now
+    n.times do
+      system run_cmd(path)
+    end
+    t1 = Time.now
+    t = t1 - t0
+
+    times[framework] = [t, t / n]
+  end
+
+  puts "N = #{n}"
+  puts
+  times.sort_by { |f,(tt, tp)| tp }.each do |f,(tt, tp)|
+    puts "%-12s: %6.2f s (%.2f s / run)" % [f, tt, tp]
+  end
+end
 
 Gem.find_files("minitest/bench/*.rb").each do |path|
   require path
@@ -99,11 +124,11 @@ task :report do
     end
 
     xxx = HashHash.new
-    reports.each do |n, rep|
+    reports.each do |num, rep|
       rep.each do |framework, result|
         result.each do |k,v|
           next if k =~ /_x$/
-          xxx[k][framework][n] = v
+          xxx[k][framework][num] = v
         end
       end
     end
@@ -117,14 +142,14 @@ task :report do
       puts
     end
 
-    puts "Size = #{n}:"
-    puts "%15s: %6s (%8s) %6s (%8s) (%8s)" %
-      %w(framework pos multiple neg multiple avg)
-    puts "-" * 63
-    report.each do |framework, h|
-      puts "%15s: %6.2f (%6.2f x) %6.2f (%6.2f x) (%6.2f x)" %
-        [framework, *h.values_at(*cols)]
-    end
+    # puts "Size = #{n}:"
+    # puts "%15s: %6s (%8s) %6s (%8s) (%8s)" %
+    #   %w(framework pos multiple neg multiple avg)
+    # puts "-" * 63
+    # report.each do |framework, h|
+    #   puts "%15s: %6.2f (%6.2f x) %6.2f (%6.2f x) (%6.2f x)" %
+    #     [framework, *h.values_at(*cols)]
+    # end
 
     format = ['<tr><th>%s</th>',
               '<td class="n %s">%.2f</td><td class="x %s">(%.2f x)</td>',
@@ -190,17 +215,14 @@ def generic_generate path, framework, type, size
   end
 end
 
-def run_test t
-  out  = t.name
-  path = t.prerequisites.first
-
+def run_cmd path, out = "/dev/null"
   framework, type, size = test_type path
 
   cmd = case framework
         when "minitestunit", "minitestspec", "testunit2", "shoulda" then
           "ruby -rubygems"
         when "testunit1" then
-          "ruby"
+          "ruby -rubygems"
         when "rspec" then
           "spec"
         when "bacon" then
@@ -211,7 +233,14 @@ def run_test t
           raise "unknown framework: #{framework.inspect}"
         end
 
-  sh "X=1 time #{cmd} #{path} &> #{out}; true"
+  "X=1 time #{cmd} #{path} &> #{out}; true"
+end
+
+def run_test t
+  out  = t.name
+  path = t.prerequisites.first
+
+  sh run_cmd(path, out)
 end
 
 # vim: syntax=ruby
