@@ -29,4 +29,6 @@ end
 
 alias :rspec_footer :minitestunit_footer
 
-$frameworks << "rspec"
+# unfortunately, the way the setup currently works, you can't run
+# these both side by side, yet.
+$frameworks << "rspec" # << "rspec1"

@@ -6,7 +6,10 @@ require 'rubygems'
 require 'hoe'
 
 Hoe.plugin :isolate
-Hoe.plugin :seattlerb
+# can't load minitest early
+# Hoe.plugin :seattlerb
+# instead:
+Hoe.plugin :perforce, :email
 
 class HashHash < Hash
   def initialize
@@ -21,8 +24,8 @@ Hoe.spec 'minitest_bench' do
   self.rubyforge_name = 'seattlerb'
 
   extra_deps << ["ZenTest",   "> 0"]
-  extra_deps << ["minitest",  "> 0"]
-  extra_deps << ["rspec",     "> 0"]
+  extra_deps << ["minitest",  "~> 1.7"]
+  extra_deps << ["rspec",     ">= 2"]
   extra_deps << ["test-unit", "> 0"]
   extra_deps << ["bacon",     "> 0"]
   extra_deps << ["shoulda",   "> 0"]
@@ -123,34 +126,6 @@ task :report do
       records[k][a.max] = "worst"
     end
 
-    xxx = HashHash.new
-    reports.each do |num, rep|
-      rep.each do |framework, result|
-        result.each do |k,v|
-          next if k =~ /_x$/
-          xxx[k][framework][num] = v
-        end
-      end
-    end
-
-    xxx.each do |type, frameworks|
-      p :type => type
-      frameworks.sort.each do |framework, units|
-        times = units.sort.map { |k,v| v }
-        puts "#{framework}\t#{times.join("\t")}"
-      end
-      puts
-    end
-
-    # puts "Size = #{n}:"
-    # puts "%15s: %6s (%8s) %6s (%8s) (%8s)" %
-    #   %w(framework pos multiple neg multiple avg)
-    # puts "-" * 63
-    # report.each do |framework, h|
-    #   puts "%15s: %6.2f (%6.2f x) %6.2f (%6.2f x) (%6.2f x)" %
-    #     [framework, *h.values_at(*cols)]
-    # end
-
     format = ['<tr><th>%s</th>',
               '<td class="n %s">%.2f</td><td class="x %s">(%.2f x)</td>',
               '<td class="n %s">%.2f</td><td class="x %s">(%.2f x)</td>',
@@ -181,6 +156,36 @@ task :report do
       f.puts "</table>"
     end
   end
+
+  xxx = HashHash.new
+  reports.each do |num, rep|
+    rep.each do |framework, result|
+      result.each do |k,v|
+        next if k =~ /_x$/
+        xxx[k][framework][num] = v
+      end
+    end
+  end
+
+  xxx.each do |type, frameworks|
+    puts "#{type}\t#{$units.join("\t")}"
+    frameworks.sort.each do |framework, units|
+      times = units.sort.map { |k,v| v }
+      puts "#{framework}\t#{times.join("\t")}"
+    end
+    puts
+  end
+
+  # puts "Size = #{n}:"
+  # puts "%15s: %6s (%8s) %6s (%8s) (%8s)" %
+  #   %w(framework pos multiple neg multiple avg)
+  # puts "-" * 63
+  # report.each do |framework, h|
+  #   puts "%15s: %6.2f (%6.2f x) %6.2f (%6.2f x) (%6.2f x)" %
+  #     [framework, *h.values_at(*cols)]
+  # end
+
+
 end
 
 ############################################################
@@ -223,8 +228,10 @@ def run_cmd path, out = "/dev/null"
           "ruby -rubygems"
         when "testunit1" then
           "ruby -rubygems"
-        when "rspec" then
+        when "rspec1" then
           "spec"
+        when "rspec" then
+          "rspec"
         when "bacon" then
           "bacon"
         when "cucumber" then
