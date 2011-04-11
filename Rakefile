@@ -30,6 +30,8 @@ Hoe.spec 'minitest_bench' do
   extra_deps << ["bacon",     "> 0"]
   extra_deps << ["shoulda",   "> 0"]
   extra_deps << ["cucumber",  "> 0"]
+
+  multiruby_skip << "1.8" << "1.9"
 end
 
 task :run => [:generate, :bench, :report]
