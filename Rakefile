@@ -73,6 +73,14 @@ task :startup => :generate do
   end
 end
 
+task :trace => :generate do
+  Dir["test/*positive_1.*"].each do |path|
+    framework, type, size = test_type path
+    $stderr.puts framework
+    system trace_cmd(path)
+  end
+end
+
 Gem.find_files("minitest/bench/*.rb").each do |path|
   require path
 end
@@ -243,6 +251,32 @@ def run_cmd path, out = "/dev/null"
         end
 
   "X=1 time #{cmd} #{path} &> #{out}; true"
+end
+
+def trace_cmd path
+  framework, type, size = test_type path
+
+  out = "trace/#{framework}_trace.txt"
+
+  cmd = case framework
+        when "minitestunit", "minitestspec", "testunit2", "shoulda" then
+          "ruby -rubygems -rtracer"
+        when "testunit1" then
+          "ruby -rubygems -rtracer"
+        when "rspec1" then
+          "ruby -rtracer -S spec"
+        when "rspec" then
+          "ruby -rtracer -S rspec"
+        when "bacon" then
+          "ruby -rtracer -S bacon"
+        when "cucumber" then
+          "ruby -rtracer -S cucumber --no-color -f progress --require test/cucumber.rb"
+        else
+          raise "unknown framework: #{framework.inspect}"
+        end
+
+  "X=1 time #{cmd} #{path} 2>&1 > #{out}; true"
+  "X=1 time #{cmd} #{path} 2>&1 | grep -v rubygems > #{out}; true"
 end
 
 def run_test t
