@@ -22,4 +22,5 @@ end
 alias :testunit2_testcase   :testunit1_testcase
 alias :testunit2_footer :testunit1_footer
 
-$frameworks << "testunit1" << "testunit2"
+$frameworks << "testunit1"
+$frameworks << "testunit2"

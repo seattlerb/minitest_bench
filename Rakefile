@@ -1,5 +1,7 @@
 # -*- ruby -*-
 
+abort "use rake19 stupid" if RUBY_VERSION < "1.9"
+
 $: << 'lib'
 
 require 'rubygems'
@@ -21,20 +23,18 @@ Hoe.spec 'minitest_bench' do
   developer 'Ryan Davis', 'ryand-ruby@zenspider.com'
 
   self.version = "1.0.0"
-  self.rubyforge_name = 'seattlerb'
 
-  extra_deps << ["ZenTest",   "> 0"]
-  extra_deps << ["minitest",  "~> 1.7"]
-  extra_deps << ["rspec",     ">= 2"]
-  extra_deps << ["test-unit", "> 0"]
-  extra_deps << ["bacon",     "> 0"]
-  extra_deps << ["shoulda",   "> 0"]
-  extra_deps << ["cucumber",  "> 0"]
+  dependency "minitest",  "~> 4.0"
+  dependency "rspec",     "~> 2.0"
+  dependency "test-unit", "~> 2.0"
+  dependency "bacon",     "~> 1.0"
+  dependency "shoulda",   "~> 3.0"
+  dependency "cucumber",  "~> 1.0"
 
   multiruby_skip << "1.8" << "1.9"
 end
 
-task :run => [:generate, :bench, :report]
+task :run => [:isolate, :generate, :bench, :report]
 
 def test_file path
   out = "#{path}.out"
@@ -45,15 +45,33 @@ def test_file path
   task :bench    => out
 end
 
+task :rspec_wtf => :isolate do
+  ENV["PATH"] = "tmp/isolate/ruby-1.9.1/bin:#{ENV["PATH"]}"
+
+  puts "POSITIVE"
+  puts
+  [10, 100, 1_000, 10_000].each do |n|
+    sh "X=1 /usr/bin/time -l #{Gem.ruby} -S rspec test/rspec_positive_#{n}.rb > /dev/null; true"
+  end
+
+  puts
+  puts "NEGATIVE"
+  puts
+
+  [10, 100, 1_000, 10_000].each do |n|
+    sh "X=1 /usr/bin/time -l #{Gem.ruby} -S rspec test/rspec_negative_#{n}.rb > /dev/null; true"
+  end
+end
+
 $units      = [1, 10, 100, 1_000, 10_000]
 $types      = %w(positive negative)
 $frameworks = []
 
-task :startup => :generate do
+task :startup => [:isolate, :generate] do
   times = {}
   n = 100
 
-  Dir["test/*positive_1.*"].each do |path|
+  Dir["test/*positive_1.rb"].each do |path|
     framework, type, size = test_type path
     $stderr.puts framework
     t0 = Time.now
@@ -85,6 +103,8 @@ Gem.find_files("minitest/bench/*.rb").each do |path|
   require path
 end
 
+# $types.delete "negative"
+
 $units.each do |n|
   $types.each do |type|
     $frameworks.each do |framework|
@@ -99,21 +119,36 @@ end
 
 task :report do
   reports = {}
+  sreports = {}
 
   $units.each do |n|
-    report = Hash.new { |h,k| h[k] = {} }
+    treport = Hash.new { |h,k| h[k] = {} } # time
+    sreport = Hash.new { |h,k| h[k] = {} } # size
 
     Dir["test/*_#{n}.*.out"].sort.each do |path|
       framework, type, size = test_type path.sub(/\.out$/, '')
-      report[framework][type] = `tail -1 #{path}`.to_f
+
+      # /usr/bin/time -l output:
+      #       0.08 real         0.05 user         0.01 sys
+      # 46874624  maximum resident set size
+      # ...
+
+      output = `tail -15 #{path}`
+      time = output[/\d+\.\d+ real/].to_f
+      size = output[/\d+  maximum resident set size/].to_i
+
+      p [path, time, size]
+
+      treport[framework][type] = time
+      sreport[framework][type] = size
     end
 
-    min_p = report.map { |k,v| v["positive"] }.min
-    min_n = report.map { |k,v| v["negative"] }.min
-    max_p = report.map { |k,v| v["positive"] }.max
-    max_n = report.map { |k,v| v["negative"] }.max
+    min_p = treport.map { |k,v| v["positive"] }.min
+    min_n = treport.map { |k,v| v["negative"] }.min
+    max_p = treport.map { |k,v| v["positive"] }.max
+    max_n = treport.map { |k,v| v["negative"] }.max
 
-    report.each do |framework, h|
+    treport.each do |framework, h|
       p_x = h["positive"] / min_p
       n_x = h["negative"] / min_n
 
@@ -122,13 +157,14 @@ task :report do
       h["avg_x"]      = (p_x + n_x) / 2
     end
 
-    reports[n] = report
+    reports[n] = treport
+    sreports[n] = sreport
 
-    report = report.sort_by { |k,h| h["avg_x"] }
+    treport = treport.sort_by { |k,h| h["avg_x"] }
 
     cols = %w( positive positive_x negative negative_x avg_x)
 
-    num = report.map { |k,h| [k, *h.values_at(*cols)] }.transpose
+    num = treport.map { |k,h| [k, *h.values_at(*cols)] }.transpose
     num.shift # projects
     records = Hash.new { |h,k| h[k] = {} }
     cols.zip(num).each do |k, a|
@@ -158,7 +194,7 @@ task :report do
       f.puts '<body>'
       f.puts '<table>'
       f.puts "<tr><th>framework</th><th>pos (s)</th><th>multiple</th><th>neg (s)</th><th>multiple</th><th>avg</th></tr>"
-      report.sort_by { |k,h| h["avg_x"] }.each do |framework, h|
+      treport.sort_by { |k,h| h["avg_x"] }.each do |framework, h|
         v = h.values_at(*cols)
         a = cols.map { |col| records[col][h[col]] }
         f.puts format % [framework, *a.zip(v).flatten]
@@ -166,6 +202,9 @@ task :report do
       f.puts "</table>"
     end
   end
+
+  puts "Times:"
+  puts
 
   xxx = HashHash.new
   reports.each do |num, rep|
@@ -177,25 +216,38 @@ task :report do
     end
   end
 
-  xxx.each do |type, frameworks|
+  $types.each do |type|
+    frameworks = xxx[type]
     puts "#{type}\t#{$units.join("\t")}"
-    frameworks.sort.each do |framework, units|
+    frameworks.sort_by { |_, ts| ts.sort[-1][-1] }.each do |framework, units|
       times = units.sort.map { |k,v| v }
-      puts "#{framework}\t#{times.join("\t")}"
+      puts "%-12s\t%s" % [framework, times.join("\t")]
     end
     puts
   end
 
-  # puts "Size = #{n}:"
-  # puts "%15s: %6s (%8s) %6s (%8s) (%8s)" %
-  #   %w(framework pos multiple neg multiple avg)
-  # puts "-" * 63
-  # report.each do |framework, h|
-  #   puts "%15s: %6.2f (%6.2f x) %6.2f (%6.2f x) (%6.2f x)" %
-  #     [framework, *h.values_at(*cols)]
-  # end
+  yyy = HashHash.new
+  sreports.each do |num, rep|
+    rep.each do |framework, result|
+      result.each do |k,v|
+        next if k =~ /_x$/
+        yyy[k][framework][num] = v
+      end
+    end
+  end
 
+  puts "Sizes (RSS in MB):"
+  puts
 
+  $types.each do |type|
+    frameworks = yyy[type]
+    puts "#{type}\t#{$units.join("\t")}"
+    frameworks.sort_by { |_, ts| ts.sort[-1][-1] }.each do |framework, units|
+      times = units.sort.map { |k,v| v.to_f / (1024 * 1024) }
+      puts "%-12s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f" % [framework, *times]
+    end
+    puts
+  end
 end
 
 ############################################################
@@ -235,22 +287,22 @@ def run_cmd path, out = "/dev/null"
 
   cmd = case framework
         when "minitestunit", "minitestspec", "testunit2", "shoulda" then
-          "ruby -rubygems"
+          "-rubygems"
         when "testunit1" then
-          "ruby -rubygems"
+          "-rubygems"
         when "rspec1" then
-          "spec"
+          "-S spec"
         when "rspec" then
-          "rspec"
+          "-S rspec"
         when "bacon" then
-          "bacon"
+          "-S bacon"
         when "cucumber" then
-          "cucumber --no-color -f progress --require test/cucumber.rb"
+          "-S cucumber --no-color -f progress --require test/cucumber.rb"
         else
           raise "unknown framework: #{framework.inspect}"
         end
 
-  "X=1 time #{cmd} #{path} &> #{out}; true"
+  "X=1 /usr/bin/time -l #{Gem.ruby} #{cmd} #{path} &> #{out}; true"
 end
 
 def trace_cmd path
@@ -260,23 +312,22 @@ def trace_cmd path
 
   cmd = case framework
         when "minitestunit", "minitestspec", "testunit2", "shoulda" then
-          "ruby -rubygems -rtracer"
+          "-rubygems -rtracer"
         when "testunit1" then
-          "ruby -rubygems -rtracer"
+          "-rubygems -rtracer"
         when "rspec1" then
-          "ruby -rtracer -S spec"
+          "-rtracer -S spec"
         when "rspec" then
-          "ruby -rtracer -S rspec"
+          "-rtracer -S rspec"
         when "bacon" then
-          "ruby -rtracer -S bacon"
+          "-rtracer -S bacon"
         when "cucumber" then
-          "ruby -rtracer -S cucumber --no-color -f progress --require test/cucumber.rb"
+          "-rtracer -S cucumber --no-color -f progress --require test/cucumber.rb"
         else
           raise "unknown framework: #{framework.inspect}"
         end
 
-  "X=1 time #{cmd} #{path} 2>&1 > #{out}; true"
-  "X=1 time #{cmd} #{path} 2>&1 | grep -v rubygems > #{out}; true"
+  "X=1 time #{Gem.ruby} #{cmd} #{path} 2>&1 | grep -v rubygems > #{out}; true"
 end
 
 def run_test t
